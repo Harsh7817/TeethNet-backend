@@ -1,0 +1,85 @@
+services:
+  redis:
+    image: redis:7
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  python-api:
+    build:
+      context: ./python
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+    ports:
+      - "8000:8000"
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - UPLOAD_DIR=/data/uploads
+      - RESULT_DIR=/data/results
+      - DEPTH_CHECKPOINT=/models/depth-anything-Large-hf
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - HF_HUB_DISABLE_TELEMETRY=1
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+    volumes:
+      - ./python:/app
+      - ./data:/data
+      - ./models:/models:ro
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  python-worker:
+    build:
+      context: ./python
+    # GPU will be added by running docker run --gpus all manually (Option 1)
+    command: ["celery", "-A", "tasks.celery", "worker", "--loglevel=info", "--pool=solo"]
+    environment:
+      - CELERY_BROKER_URL=redis://redis:6379/0
+      - CELERY_RESULT_BACKEND=redis://redis:6379/0
+      - REDIS_HOST=redis
+      - REDIS_PORT=6379
+      - UPLOAD_DIR=/data/uploads
+      - RESULT_DIR=/data/results
+      - DEPTH_CHECKPOINT=/models/depth-anything-Large-hf
+      - USE_GPU=0
+      - POISSON_DEPTH=9
+      - OUTLIER_NEIGHBORS=15
+      - OUTLIER_STD_RATIO=1.0
+      - ORTHO_SCALE_FACTOR=255
+      - INFERENCE_RESIZE=0
+      - RESULT_PREFIX=
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - HF_HUB_DISABLE_TELEMETRY=1
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+    volumes:
+      - ./python:/app
+      - ./data:/data:rw
+      - ./models:/models:ro
+      - ./hf_cache:/root/.cache/huggingface:rw
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  node:
+    build:
+      context: ./node
+    command: ["node", "server.js"]
+    ports:
+      - "3000:3000"
+    environment:
+      PYTHON_URL: http://python-api:8000
+      MONGODB_URI: mongodb+srv://ironman88103102_db_user:spmUDYDtsWv6WnrV@cluster0.1pbkn62.mongodb.net/teethnet?retryWrites=true&w=majority&appName=Cluster0
+      JWT_SECRET: 3fe4191be8414cac9a2185511b0045400be14cfb2a181cad3969a61594a2246d
+    depends_on:
+      python-api:
+        condition: service_started
