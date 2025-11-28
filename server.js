@@ -21,7 +21,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 // Express + uploads (local temp; forwarded to Python and stored in Mongo)
 const app = express();
 app.use(express.json({ limit: '4mb' }));
-app.use(cors({ origin: 'http://localhost:5173', credentials: true })); // ADD: CORS for Vite dev
+app.use(cors({ origin: true, credentials: true })); // ADD: CORS allowed for all origins (Vercel + Localhost)
 
 const upload = multer({ dest: 'uploads/' });
 
@@ -158,7 +158,7 @@ app.post('/submit', requireAuth, upload.single('image'), async (req, res) => {
     });
 
     // remove local temp file
-    fs.unlink(filePath, () => {});
+    fs.unlink(filePath, () => { });
 
     const { job_id, result } = response.data || {};
 
@@ -222,12 +222,12 @@ app.get('/status/:jobId', async (req, res) => {
         // non-fatal
         console.warn('[status] STL persist warning:', e.message);
       }
-    } else if (MONGODB_URI && data.state && ['RUNNING','FAILURE','QUEUED'].includes(data.state)) {
+    } else if (MONGODB_URI && data.state && ['RUNNING', 'FAILURE', 'QUEUED'].includes(data.state)) {
       // keep DB status in sync
       try {
         await connectMongo();
         await Job.updateMany({ jobId }, { $set: { status: data.state } });
-      } catch {}
+      } catch { }
     }
 
     return res.json(data);
