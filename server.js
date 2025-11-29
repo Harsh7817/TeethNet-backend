@@ -25,6 +25,19 @@ app.use(cors({ origin: true, credentials: true })); // ADD: CORS allowed for all
 
 const upload = multer({ dest: 'uploads/' });
 
+// Helper for retry
+async function fetchWithRetry(url, options, retries = 5, delay = 3000) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      return await axios(url, options);
+    } catch (err) {
+      if (i === retries - 1) throw err;
+      console.log(`[Retry] Attempt ${i + 1} failed, retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+}
+
 // ---------------- Mongo connection, models, GridFS ----------------
 let gfsBucket = null;
 
@@ -152,10 +165,8 @@ app.post('/submit', requireAuth, upload.single('image'), async (req, res) => {
     const form = new FormData();
     form.append('file', fs.createReadStream(filePath), origName);
 
-    const response = await axios.post(`${PYTHON_URL}/upload/`, form, {
-      headers: form.getHeaders(),
-      timeout: 120000
-    });
+    // Use fetchWithRetry to handle cold starts
+    const response = await fetchWithRetry(`${PYTHON_URL}/upload/`, form, 5, 3000);
 
     // remove local temp file
     fs.unlink(filePath, () => { });
@@ -257,6 +268,18 @@ app.get('/files/:id', async (req, res) => {
     streamGridFSFile(req.params.id, res);
   } catch (e) {
     res.status(500).json({ error: e.message });
+  }
+});
+
+// ---------------- Health Check ----------------
+app.get('/health', async (req, res) => {
+  try {
+    // Ping Python service to wake it up
+    await axios.get(`${PYTHON_URL}/health`, { timeout: 5000 });
+    res.json({ status: 'ok', python: 'ok' });
+  } catch (e) {
+    // Even if Python is down/waking up, we return ok so frontend knows Node is up
+    res.json({ status: 'ok', python: 'down', error: e.message });
   }
 });
 
