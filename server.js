@@ -166,7 +166,12 @@ app.post('/submit', requireAuth, upload.single('image'), async (req, res) => {
     form.append('file', fs.createReadStream(filePath), origName);
 
     // Use fetchWithRetry to handle cold starts
-    const response = await fetchWithRetry(`${PYTHON_URL}/upload/`, form, 5, 3000);
+    const response = await fetchWithRetry(`${PYTHON_URL}/upload/`, {
+      method: 'POST',
+      data: form,
+      headers: { ...form.getHeaders() },
+      timeout: 120000
+    }, 5, 3000);
 
     // remove local temp file
     fs.unlink(filePath, () => { });
