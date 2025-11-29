@@ -253,12 +253,31 @@ app.get('/status/:jobId', async (req, res) => {
   }
 });
 
-// ---------------- Download passthrough (unchanged) ----------------
+// ---------------- Download passthrough (robust) ----------------
 app.get('/download/:jobId', async (req, res) => {
   try {
-    const resp = await axios.get(`${PYTHON_URL}/download/${req.params.jobId}`, { responseType: 'stream' });
-    res.setHeader('Content-Disposition', `attachment; filename="${req.params.jobId}.stl"`);
+    const jobId = req.params.jobId;
+
+    // 1. Try to serve from MongoDB GridFS first (Persistent)
+    if (MONGODB_URI) {
+      try {
+        await connectMongo();
+        const jobDoc = await Job.findOne({ jobId });
+        if (jobDoc && jobDoc.stlFileId) {
+          console.log(`[Download] Serving ${jobId} from GridFS`);
+          return streamGridFSFile(jobDoc.stlFileId, res);
+        }
+      } catch (e) {
+        console.warn(`[Download] DB lookup failed for ${jobId}, falling back to Python:`, e.message);
+      }
+    }
+
+    // 2. Fallback to Python service (Ephemeral)
+    console.log(`[Download] Serving ${jobId} from Python service`);
+    const resp = await axios.get(`${PYTHON_URL}/download/${jobId}`, { responseType: 'stream' });
+    res.setHeader('Content-Disposition', `attachment; filename="${jobId}.stl"`);
     resp.data.pipe(res);
+
   } catch (err) {
     if (err.response) return res.status(err.response.status).json(err.response.data);
     return res.status(500).json({ error: 'Failed to download result' });
