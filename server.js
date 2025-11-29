@@ -257,6 +257,7 @@ app.get('/status/:jobId', async (req, res) => {
 app.get('/download/:jobId', async (req, res) => {
   try {
     const jobId = req.params.jobId;
+    console.log(`[Download] Request for ${jobId}`);
 
     // 1. Try to serve from MongoDB GridFS first (Persistent)
     if (MONGODB_URI) {
@@ -266,10 +267,14 @@ app.get('/download/:jobId', async (req, res) => {
         if (jobDoc && jobDoc.stlFileId) {
           console.log(`[Download] Serving ${jobId} from GridFS`);
           return streamGridFSFile(jobDoc.stlFileId, res);
+        } else {
+          console.log(`[Download] Job found in DB but no stlFileId (status: ${jobDoc?.status})`);
         }
       } catch (e) {
         console.warn(`[Download] DB lookup failed for ${jobId}, falling back to Python:`, e.message);
       }
+    } else {
+      console.warn('[Download] MONGODB_URI not set, skipping GridFS check');
     }
 
     // 2. Fallback to Python service (Ephemeral)
@@ -279,7 +284,11 @@ app.get('/download/:jobId', async (req, res) => {
     resp.data.pipe(res);
 
   } catch (err) {
-    if (err.response) return res.status(err.response.status).json(err.response.data);
+    console.error(`[Download] Error for ${req.params.jobId}:`, err.message);
+    if (err.response) {
+      console.error(`[Download] Python response: ${err.response.status}`, err.response.data);
+      return res.status(err.response.status).json(err.response.data);
+    }
     return res.status(500).json({ error: 'Failed to download result' });
   }
 });
@@ -300,10 +309,19 @@ app.get('/health', async (req, res) => {
   try {
     // Ping Python service to wake it up
     await axios.get(`${PYTHON_URL}/health`, { timeout: 5000 });
-    res.json({ status: 'ok', python: 'ok' });
+    res.json({
+      status: 'ok',
+      python: 'ok',
+      mongo: MONGODB_URI ? (mongoose.connection.readyState === 1 ? 'connected' : 'disconnected') : 'not_configured'
+    });
   } catch (e) {
     // Even if Python is down/waking up, we return ok so frontend knows Node is up
-    res.json({ status: 'ok', python: 'down', error: e.message });
+    res.json({
+      status: 'ok',
+      python: 'down',
+      error: e.message,
+      mongo: MONGODB_URI ? (mongoose.connection.readyState === 1 ? 'connected' : 'disconnected') : 'not_configured'
+    });
   }
 });
 
