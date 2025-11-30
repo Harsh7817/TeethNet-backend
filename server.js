@@ -208,6 +208,20 @@ app.get('/status/:jobId', async (req, res) => {
     const resp = await axios.get(`${PYTHON_URL}/status/${jobId}`);
     const data = resp.data || {};
 
+    // Attach DB info (imageFileId, sourceFilename) if available
+    if (MONGODB_URI) {
+      try {
+        await connectMongo();
+        const jobDoc = await Job.findOne({ jobId });
+        if (jobDoc) {
+          data.imageFileId = jobDoc.imageFileId;
+          data.sourceFilename = jobDoc.sourceFilename;
+        }
+      } catch (e) {
+        console.warn('[status] DB lookup warning:', e.message);
+      }
+    }
+
     // If SUCCESS, fetch STL once and store in GridFS if not stored yet.
     if (data.state === 'SUCCESS' && data.result && MONGODB_URI) {
       try {
