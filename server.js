@@ -21,7 +21,7 @@ const JWT_SECRET = process.env.JWT_SECRET || 'dev-secret';
 // Express + uploads (local temp; forwarded to Python and stored in Mongo)
 const app = express();
 app.use(express.json({ limit: '4mb' }));
-app.use(cors({ origin: 'http://localhost:5173', credentials: true })); // ADD: CORS for Vite dev
+app.use(cors({ origin: true, credentials: true })); // Reflect request origin for CORS (fixes Vercel error)
 
 const upload = multer({ dest: 'uploads/' });
 
