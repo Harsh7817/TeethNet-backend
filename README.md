@@ -404,4 +404,4 @@ For production deployment:
 
 ## License
 
-Internal project scaffold. Customize freely.
+Developed as a full-stack AI/3D reconstruction project for exploring software-based dental model generation from 2D images.
